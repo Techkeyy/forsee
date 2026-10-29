@@ -6,7 +6,7 @@ import {readAccount} from './account.js';
 import {withAccountLock} from './wallet-lock.js';
 import {receiptOrder, assertAttempt, saveVerified, bufferedGas, persistHash, definiteRejection, removeMatching} from './onboard-reconcile.js';
 
-const CLAIM_ENABLED = true;
+const CLAIM_ENABLED = false;
 const ORDER_ENABLED = false;
 const GENESIS = '0x555de6145260a388241bea0f9328d57335d330d5a0fbb329de1a4fd1c7f2eb25';
 const BANK = '0x478769e1177c0773c43a593dccc4ad15f15f1394';
@@ -174,5 +174,6 @@ export default function Onboard({account, onRefresh, sessionSignal}) {
       persistHash(localStorage,sessionStorage,key(account),record); setPending(record); setMessage('Hash saved. Check the transaction to verify it matches the original request.');
     }); } catch(e) { setMessage(e?.message || 'Unable to save the transaction hash.'); }
   }
-  return <section><h2>Claim testnet credit</h2><p>Eligible wallets can claim paper USDso for testnet perps. Your wallet will ask you to approve a transaction, which uses testnet STT for gas.</p><button disabled={!CLAIM_ENABLED || busy || !!pending} onClick={() => lockedSubmit('claim')}>Claim paper USDso</button>{pending && <><button disabled={busy} onClick={lockedCheck}>Check transaction</button>{!pending.hash && <><label>Transaction hash from wallet activity<input value={recoveryHash} onChange={e=>setRecoveryHash(e.target.value)} /></label><button disabled={busy} onClick={importHash}>Use transaction hash</button></>}</>}<p role="status">{message}</p></section>;
+  return <section><h2>Claim testnet credit</h2><p>The current dreamDEX distributor rejects direct claims even when its SDK reports eligibility. We are preparing another testnet funding route; no claim transaction is available here right now.</p><button disabled={!CLAIM_ENABLED || busy || !!pending} onClick={() => lockedSubmit('claim')}>Claim paper USDso</button>{pending && <><button disabled={busy} onClick={lockedCheck}>Check transaction</button>{!pending.hash && <><label>Transaction hash from wallet activity<input value={recoveryHash} onChange={e=>setRecoveryHash(e.target.value)} /></label><button disabled={busy} onClick={importHash}>Use transaction hash</button></>}</>}<p role="status">{message}</p></section>;
 }
+
