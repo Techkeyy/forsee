@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';
+import {sendTracked} from '../src/tracked-send.js';
+const hash='0x'+'ab'.repeat(32), account='0x'+'12'.repeat(20),call={to:account,data:'0xab',value:3n},record={account,hash:null};
+let current=null,events=[];const save=(_s,r)=>{events.push(r.hash?'hash':'request');current=r;},clear=()=>{events.push('clear');current=null;},classify=e=>e.code===4001?'rejected':'unknown';
+const provider={request:async p=>{events.push('wallet');assert.equal(current.hash,null);assert.equal(p.params[0].value,'0x3');return hash;}};
+let r=await sendTracked({provider,account,call,record,storage:{},save,clear,classify});assert.deepEqual(events,['request','wallet','hash']);assert.equal(current.hash,hash);assert.equal(r.state,'hash');
+events=[];r=await sendTracked({provider:{request:async()=>{throw {code:4001};}},account,call,record,storage:{},save,clear,classify});assert.deepEqual(events,['request','clear']);assert.equal(r.state,'rejected');
+events=[];r=await sendTracked({provider:{request:async()=>{throw Error('timeout');}},account,call,record,storage:{},save,clear,classify});assert.deepEqual(events,['request']);assert.equal(r.state,'unknown');assert.equal(current.hash,null);
+events=[];r=await sendTracked({provider,account,call,record,storage:{},save:(_s,v)=>{if(v.hash)throw Error('quota');current=v;},clear,classify});assert.equal(r.state,'unknown');assert.equal(current.hash,null);
+console.log('tracked send checks passed');

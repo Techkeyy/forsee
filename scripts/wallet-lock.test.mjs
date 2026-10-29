@@ -1,0 +1,6 @@
+import assert from 'node:assert/strict';
+import {walletLockKey,withAccountLock} from '../src/wallet-lock.js';
+const active=new Set(),manager={async request(name,options,callback){assert.equal(options.mode,'exclusive');assert.equal(options.ifAvailable,true);if(active.has(name))return callback(null);active.add(name);try{return await callback({name});}finally{active.delete(name);}}};
+const account='0x'+'ab'.repeat(20),alternate='0x'+'cd'.repeat(20);assert.equal(walletLockKey(account),walletLockKey(account.toUpperCase().replace('0X','0x')));
+let release;const gate=new Promise(r=>release=r);let entered;const ready=new Promise(r=>entered=r);const claim=withAccountLock(manager,account,async()=>{entered();await gate;return 'claim complete';});await ready;
+let stopCalled=false;await assert.rejects(()=>withAccountLock(manager,account,()=>{stopCalled=true;}),/Another tab/);assert.equal(stopCalled,false);assert.equal(await withAccountLock(manager,alternate,()=> 'other wallet allowed'),'other wallet allowed');release();assert.equal(await claim,'claim complete');assert.equal(await withAccountLock(manager,account,()=> 'stop allowed'),'stop allowed');console.log('concurrent claim and stop share account lock');

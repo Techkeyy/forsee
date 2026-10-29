@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {readAction,saveAction,clearAction,matchesTransaction} from '../src/action-journal.js';
+const values=new Map();const storage={getItem:k=>values.get(k)??null,setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+const account='0x'+'12'.repeat(20),registry='0x'+'34'.repeat(20),pool='0x'+'56'.repeat(20),hash='0x'+'ab'.repeat(32);
+const r={account,registry,pool,kind:'stop',market:'BTC',to:registry,data:'0xabcd',value:'0',hash:null,id:null};
+saveAction(storage,r);assert.deepEqual(readAction(storage,account),r);assert.equal(readAction(storage,'0x'+'88'.repeat(20)),null);
+const sent={...r,hash};saveAction(storage,sent);const tx={hash,from:account,to:registry,input:'0xabcd',value:0n,chainId:50383},receipt={transactionHash:hash};assert.equal(matchesTransaction(sent,tx,receipt),true);
+for(const change of [{from:pool},{to:pool},{input:'0xabce'},{value:1n},{chainId:1},{hash:'0x'+'cd'.repeat(32)}])assert.equal(matchesTransaction(sent,{...tx,...change},receipt),false);
+assert.equal(matchesTransaction(sent,tx,{transactionHash:'0x'+'cd'.repeat(32)}),false);
+clearAction(storage,account);assert.equal(readAction(storage,account),null);
+values.set(`forsee:action:50383:${account}`, '{bad');assert.throws(()=>readAction(storage,account),/unreadable/);
+assert.throws(()=>saveAction(storage,{...r,hash:'0x1234'}),/invalid/);
+const broken={setItem(){},getItem(){return null;}};assert.throws(()=>saveAction(broken,r),/save/);
+console.log('action journal checks passed');

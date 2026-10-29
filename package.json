@@ -1,0 +1,26 @@
+{
+  "name": "forsee",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test scripts/scenario.test.mjs scripts/stop.test.mjs scripts/stop-attempt.test.mjs scripts/permission.test.mjs scripts/stop-abi.test.mjs scripts/onboard.test.mjs scripts/action-journal.test.mjs scripts/backup-refresh.test.mjs scripts/fallback-history.test.mjs scripts/guards.test.mjs scripts/sdk-builders.test.mjs scripts/tracked-send.test.mjs scripts/wallet-lock.test.mjs",
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "doctor": "node scripts/doctor.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "@somnia-chain/markets-sdk": "0.32.1",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "viem": "2.57.12"
+  },
+  "devDependencies": {
+    "vite": "7.2.2"
+  }
+}

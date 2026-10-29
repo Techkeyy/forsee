@@ -1,0 +1,3 @@
+import assert from 'node:assert/strict';
+const m=new Map();globalThis.sessionStorage={setItem:(k,v)=>m.set(k,v),getItem:k=>m.get(k)??null,removeItem:k=>m.delete(k)};globalThis.indexedDB={open(){throw Error('unavailable');}};
+const account='0x'+'12'.repeat(20),hash='0x'+'ab'.repeat(32);const first=await import('../src/hash-backup.js?before-refresh');assert.equal(await first.backupHash(account,hash),true);const after=await import('../src/hash-backup.js?after-refresh');assert.equal(await after.readBackupHash(account),hash);await after.clearBackupHash(account);assert.equal(await after.readBackupHash(account),null);console.log('session backup survives module reload');

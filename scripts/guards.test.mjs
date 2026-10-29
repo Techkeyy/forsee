@@ -1,0 +1,6 @@
+import assert from 'node:assert/strict';
+import {sendTracked} from '../src/tracked-send.js';import {saveStopHistory,hasLiveSavedStop} from '../src/stop-history.js';
+const account='0x'+'12'.repeat(20),registry='0x'+'34'.repeat(20),pool='0x'+'56'.repeat(20),hash='0x'+'ab'.repeat(32),controller=new AbortController();let calls=0,current=null;
+const save=(_s,r)=>{current=r;controller.abort();},clear=()=>{current=null;};
+await assert.rejects(()=>sendTracked({provider:{request:async()=>{calls++;return hash;}},account,call:{to:registry,data:'0xab',value:0n},record:{account,hash:null},storage:{},save,clear,classify:()=> 'unknown',beforeRequest:()=>{if(controller.signal.aborted)throw Error('disconnected');}}),/disconnected/);assert.equal(calls,0);assert.equal(current,null);
+const m=new Map(),storage={getItem:k=>m.get(k)??null,setItem:(k,v)=>m.set(k,v)};saveStopHistory(storage,{account,pool,registry,market:'BTC',hash},'7');assert.equal(await hasLiveSavedStop(storage,account,pool,registry,async id=>id==='7'?{}:null),true);assert.equal(await hasLiveSavedStop(storage,account,pool,registry,async()=>null),false);await assert.rejects(()=>hasLiveSavedStop(storage,account,pool,registry,async()=>{throw Error('offline');}),/offline/);console.log('disconnect and known-stop guard checks passed');
