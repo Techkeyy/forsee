@@ -5,6 +5,7 @@ import {createWalletClient, createPublicClient, custom, erc20Abi, formatUnits, e
 import {readAccount, isFresh} from './account.js';
 import {receiptOrder, assertAttempt, saveVerified, withWalletLock, bufferedGas, persistHash, definiteRejection, removeMatching, actionLockKey, exactUnits, boundedLong, beforeWalletRequest, revertedOrderReceipt, validApprovalIntent, validateFunding} from './onboard-reconcile.js';
 import {assertNoUnresolved} from './unresolved-journals.js';
+import {gridDefault, preferredAmount} from './order-grid.js';
 
 const CLAIM_ENABLED = false;
 const ORDER_ENABLED = true;
@@ -30,8 +31,11 @@ async function identity(provider, account) {
 }
 
 export default function Onboard({account, onRefresh, sessionSignal}) {
-  const [quantity, setQuantity] = useState('0.0001');
+  const [quantity, setQuantity] = useState('');
   const [symbol, setSymbol] = useState('BTC');
+  const edits = useRef({});
+  const gridGeneration = useRef(0);
+  const [grid,setGrid] = useState(null);
   const [quote, setQuote] = useState(null);
   const [message, setMessage] = useState('');
   const [funds, setFunds] = useState(null);
@@ -88,6 +92,19 @@ export default function Onboard({account, onRefresh, sessionSignal}) {
     if (onchain.baseSymbol !== requestedSymbol || onchain.baseDecimals !== choices[0].baseDecimals || onchain.quoteDecimals !== 18 || onchain.poolAddress.toLowerCase() !== choices[0].poolAddress.toLowerCase()) throw Error('Market metadata disagrees with the chain.');
     return {provider,markets,market:onchain};
   }
+  useEffect(()=>{
+    let active=true,exchange; const attempt=generation.current, gridAttempt=++gridGeneration.current; setGrid(null);
+    (async()=>{
+      const {provider,markets,market}=await setup(symbol,true); exchange=markets;
+      const rpc=createPublicClient({chain:hidekiTestnet,transport:custom(provider)});
+      const {minQuantity,lotSize}=await rpc.readContract({address:market.poolAddress,abi:bookAbi,functionName:'getOrderBookParameters'});
+      const rules=gridDefault(symbol,market.baseDecimals,minQuantity,lotSize);
+      await identity(provider,account); assertAttempt(generation,attempt);
+      if (!sessionSignal || sessionSignal.aborted) throw Error('Wallet session ended.');
+      if(active && gridGeneration.current===gridAttempt) { setGrid({...rules,symbol}); setQuantity(preferredAmount(symbol,rules.suggested,edits.current)); }
+    })().catch(()=>{if(active && generation.current===attempt && gridGeneration.current===gridAttempt) setGrid({symbol,error:true});}).finally(async()=>{try{await exchange?.close();}catch{}});
+    return ()=>{active=false;};
+  },[symbol,account,sessionSignal]);
   async function orderInputs(provider,markets,market,amount,approvedPrice,approvedAllowance) {
     assertNoUnresolved(localStorage,account);
     const voucher = await markets.client.getPerpVoucher(market.marginBank,account);
@@ -285,9 +302,10 @@ export default function Onboard({account, onRefresh, sessionSignal}) {
     <button disabled={!ORDER_ENABLED || busy || !!pending || !funds || !!funds.error || funds.allowance!==0n || funds.balance<ALLOWANCE_CAP} onClick={()=>lockedSubmit('approval')}>Approve up to 20 USDso</button>
     <button className="secondary" disabled={!ORDER_ENABLED || busy || !!pending || !funds || !!funds.error || funds.allowance===0n} onClick={()=>lockedSubmit('revoke')}>Revoke wallet permission</button>
     <h3>Open a small test position</h3><p>Review a live price, then confirm the order in Rabby. A successful wallet transaction may still have no fill; Forsee will verify the resulting position.</p><p>A long position can lose value. The order executes immediately up to the reviewed maximum price and may fill only partly. The maximum order value is 100 USDso. The pool may draw approved USDso from your wallet if account collateral is insufficient.</p>
-    <label>Market<select disabled={!ORDER_ENABLED || busy || !!pending} value={symbol} onChange={e=>{setSymbol(e.target.value);setQuantity(e.target.value==='BTC'?'0.0001':'0.01');setQuote(null);}}><option>BTC</option><option>ETH</option></select></label>
-    <label>Amount ({symbol})<input disabled={!ORDER_ENABLED || busy || !!pending} value={quantity} onChange={e=>{setQuantity(e.target.value);setQuote(null);}} inputMode="decimal" /></label>
-    <button disabled={!ORDER_ENABLED || busy || !!pending} onClick={previewOrder}>Review price</button>
+    <label>Market<select disabled={!ORDER_ENABLED || busy || !!pending} value={symbol} onChange={e=>{const next=e.target.value;gridGeneration.current++;setSymbol(next);setQuantity(preferredAmount(next,null,edits.current));setGrid(null);setQuote(null);}}><option>BTC</option><option>ETH</option></select></label>
+    <label>Amount ({symbol})<input disabled={!ORDER_ENABLED || busy || !!pending} value={quantity} onChange={e=>{edits.current[symbol]=e.target.value;setQuantity(e.target.value);setQuote(null);}} inputMode="decimal" /></label>
+    {!grid ? <p role="status">Checking the market minimum and size step...</p> : grid.error ? <p role="status">Market size rules are unavailable. Reconnect and try again.</p> : <p>Market minimum: {grid.min} {symbol}; size step: {grid.lot} {symbol}.{grid.suggested===null && ' The minimum is above this tool’s size limit.'}</p>}
+    <button disabled={!ORDER_ENABLED || busy || !!pending || !grid || grid.error || grid.suggested===null} onClick={previewOrder}>Review price</button>
     {quote && <><p>Buy up to {quote.amount} {quote.symbol}, at no more than {formatUnits(BigInt(quote.price),quote.quoteDecimals)} USDso per {quote.symbol}. The quote expires after 30 seconds. Estimated wallet draw: {formatUnits(BigInt(quote.ownWalletPull),18)} USDso. Your current MarginBank allowance is {formatUnits(BigInt(quote.allowance),18)} USDso; the actual draw may change before execution, up to that allowance.</p><button disabled={!ORDER_ENABLED || busy || !!pending} onClick={()=>lockedSubmit('order')}>Open {quote.symbol} long</button></>}
     <details><summary>About paper test credit</summary><p>The current dreamDEX distributor rejects direct claims even when its SDK reports eligibility. No claim transaction is available here right now.</p></details>
     <p role="status">{message}</p>

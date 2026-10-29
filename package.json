@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test scripts/scenario.test.mjs scripts/stop.test.mjs scripts/stop-attempt.test.mjs scripts/permission.test.mjs scripts/stop-abi.test.mjs scripts/onboard.test.mjs scripts/action-journal.test.mjs scripts/backup-refresh.test.mjs scripts/fallback-history.test.mjs scripts/guards.test.mjs scripts/sdk-builders.test.mjs scripts/tracked-send.test.mjs scripts/wallet-lock.test.mjs scripts/unresolved-journals.test.mjs",
+    "test": "node --test scripts/scenario.test.mjs scripts/stop.test.mjs scripts/stop-attempt.test.mjs scripts/permission.test.mjs scripts/stop-abi.test.mjs scripts/onboard.test.mjs scripts/action-journal.test.mjs scripts/backup-refresh.test.mjs scripts/fallback-history.test.mjs scripts/guards.test.mjs scripts/sdk-builders.test.mjs scripts/tracked-send.test.mjs scripts/wallet-lock.test.mjs scripts/unresolved-journals.test.mjs scripts/order-grid.test.mjs",
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
