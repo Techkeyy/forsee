@@ -31,7 +31,7 @@ async function identity(provider, account) {
   if (code !== '0x') throw Error('This setup currently supports externally owned accounts only.');
 }
 
-export default function Onboard({account, onRefresh, sessionSignal}) {
+export default function Onboard({account, onRefresh, sessionSignal, canOpen, positionKnown}) {
   const [quantity, setQuantity] = useState('');
   const [symbol, setSymbol] = useState('BTC');
   const edits = useRef({});
@@ -101,6 +101,7 @@ export default function Onboard({account, onRefresh, sessionSignal}) {
     return {provider,markets,market:onchain};
   }
   useEffect(()=>{
+    if (!canOpen) { setGrid(null); setQuote(null); return; }
     let active=true,exchange; const attempt=generation.current, gridAttempt=++gridGeneration.current; setGrid(null);
     (async()=>{
       const {provider,markets,market}=await setup(symbol,true); exchange=markets;
@@ -112,7 +113,7 @@ export default function Onboard({account, onRefresh, sessionSignal}) {
       if(active && gridGeneration.current===gridAttempt) { setGrid({...rules,symbol}); setQuantity(preferredAmount(symbol,rules.suggested,edits.current)); }
     })().catch(()=>{if(active && generation.current===attempt && gridGeneration.current===gridAttempt) setGrid({symbol,error:true});}).finally(async()=>{try{await exchange?.close();}catch{}});
     return ()=>{active=false;};
-  },[symbol,account,sessionSignal]);
+  },[symbol,account,sessionSignal,canOpen]);
   async function orderInputs(provider,markets,market,amount,approvedPrice,approvedAllowance) {
     assertNoUnresolved(localStorage,account);
     const voucher = await markets.client.getPerpVoucher(market.marginBank,account);
@@ -305,18 +306,19 @@ export default function Onboard({account, onRefresh, sessionSignal}) {
     }); } catch(e) { setMessage(e?.message || 'Unable to save the transaction hash.'); }
   }
   return <section>
-    <h2>Prepare a test position</h2>
-    {funds ? funds.error ? <p role="status">Wallet USDso balance is unavailable. Reconnect and try again.</p> : <p>Wallet balance: <strong>{formatUnits(funds.balance,18)} USDso</strong> · MarginBank permission: <strong>{formatUnits(funds.allowance,18)} USDso</strong> <button className="secondary" onClick={()=>setFundsRevision(n=>n+1)}>Refresh balance</button></p> : <p role="status">Checking wallet balance...</p>}
+    <h2>Wallet funds and permissions</h2>
+    {funds ? funds.error ? <p role="status">Wallet USDso balance is unavailable. Reconnect and try again.</p> : <p>Wallet balance: <strong>{formatUnits(funds.balance,18)} USDso</strong> | MarginBank permission: <strong>{formatUnits(funds.allowance,18)} USDso</strong> <button className="secondary" onClick={()=>setFundsRevision(n=>n+1)}>Refresh balance</button></p> : <p role="status">Checking wallet balance...</p>}
     {pending && <><button disabled={busy} onClick={lockedCheck}>Check transaction</button>{!pending.hash && <><label>Transaction hash from wallet activity<input value={recoveryHash} onChange={e=>setRecoveryHash(e.target.value)} /></label><button disabled={busy} onClick={importHash}>Use transaction hash</button></>}</>}
     <h3>Set a wallet spending limit</h3><p>Allow MarginBank to draw up to 20 USDso from this wallet for testnet positions. The permission persists until spent, changed or revoked. It does not open a position. Approval and revocation each require a wallet transaction.</p>
     <button disabled={!ORDER_ENABLED || busy || !!pending || !funds || !!funds.error || funds.allowance!==0n || funds.balance<ALLOWANCE_CAP} onClick={()=>lockedSubmit('approval')}>Approve up to 20 USDso</button>
     <button className="secondary" disabled={!ORDER_ENABLED || busy || !!pending || !funds || !!funds.error || funds.allowance===0n} onClick={()=>lockedSubmit('revoke')}>Revoke wallet permission</button>
-    <h3>Open a small test position</h3><p>Review a live price, then confirm the order in Rabby. A successful wallet transaction may still have no fill; Forsee will verify the resulting position.</p><p>A long position can lose value. The order executes immediately up to the reviewed maximum price and may fill only partly. The maximum order value is 100 USDso. The pool may draw approved USDso from your wallet if account collateral is insufficient.</p>
+    {canOpen ? <><h3>Open a small test position</h3><p>Review a live price, then confirm the order in Rabby. A successful wallet transaction may still have no fill; Forsee will verify the resulting position.</p><p>A long position can lose value. The order executes immediately up to the reviewed maximum price and may fill only partly. The maximum order value is 100 USDso. The pool may draw approved USDso from your wallet if account collateral is insufficient.</p>
     <label>Market<select disabled={!ORDER_ENABLED || busy || !!pending} value={symbol} onChange={e=>{const next=e.target.value;gridGeneration.current++;setSymbol(next);setQuantity(preferredAmount(next,null,edits.current));setGrid(null);setQuote(null);}}><option>BTC</option><option>ETH</option></select></label>
     <label>Amount ({symbol})<input disabled={!ORDER_ENABLED || busy || !!pending} value={quantity} onChange={e=>{edits.current[symbol]=e.target.value;setQuantity(e.target.value);setQuote(null);}} inputMode="decimal" /></label>
     {!grid ? <p role="status">Checking the market minimum and size step...</p> : grid.error ? <p role="status">Market size rules are unavailable. Reconnect and try again.</p> : <p>Market minimum: {grid.min} {symbol}; size step: {grid.lot} {symbol}.{grid.suggested===null && ' The minimum is above this tool’s size limit.'}</p>}
     <button disabled={!ORDER_ENABLED || busy || !!pending || !grid || grid.error || grid.suggested===null} onClick={previewOrder}>Review price</button>
     {quote && <><p>Buy up to {quote.amount} {quote.symbol}, at no more than {formatUnits(BigInt(quote.price),quote.quoteDecimals)} USDso per {quote.symbol}. Quote {quoteSecondsRemaining(quote,quoteNow) > 0 ? `expires in ${quoteSecondsRemaining(quote,quoteNow)} seconds` : 'expired; refresh the price before continuing'}. Estimated wallet draw: {formatUnits(BigInt(quote.ownWalletPull),18)} USDso. Your current MarginBank allowance is {formatUnits(BigInt(quote.allowance),18)} USDso; the actual draw may change before execution, up to that allowance.</p><button disabled={!ORDER_ENABLED || busy || !!pending || quoteSecondsRemaining(quote,quoteNow)===0} onClick={()=>lockedSubmit('order')}>Open {quote.symbol} long</button></>}
+    </> : <p role="status">{positionKnown ? 'You already have an open position. Explore its risk and review a protective stop above; opening another position is unavailable here.' : 'Opening a position is paused until a fresh, complete account check confirms there are no open positions.'}</p>}
     <details><summary>About paper test credit</summary><p>The current dreamDEX distributor rejects direct claims even when its SDK reports eligibility. No claim transaction is available here right now.</p></details>
     <p role="status">{message}</p>
   </section>;
