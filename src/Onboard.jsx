@@ -6,6 +6,7 @@ import {readAccount, isFresh} from './account.js';
 import {receiptOrder, assertAttempt, saveVerified, withWalletLock, bufferedGas, persistHash, definiteRejection, removeMatching, actionLockKey, exactUnits, boundedLong, beforeWalletRequest, revertedOrderReceipt, validApprovalIntent, validateFunding} from './onboard-reconcile.js';
 import {assertNoUnresolved} from './unresolved-journals.js';
 import {gridDefault, preferredAmount} from './order-grid.js';
+import {quoteSecondsRemaining} from './quote-expiry.js';
 
 const CLAIM_ENABLED = false;
 const ORDER_ENABLED = true;
@@ -37,6 +38,13 @@ export default function Onboard({account, onRefresh, sessionSignal}) {
   const gridGeneration = useRef(0);
   const [grid,setGrid] = useState(null);
   const [quote, setQuote] = useState(null);
+  const [quoteNow, setQuoteNow] = useState(Date.now());
+  useEffect(() => {
+    if (!quote) return;
+    setQuoteNow(Date.now());
+    const timer = setInterval(() => setQuoteNow(Date.now()), 250);
+    return () => clearInterval(timer);
+  }, [quote]);
   const [message, setMessage] = useState('');
   const [funds, setFunds] = useState(null);
   const [fundsRevision, setFundsRevision] = useState(0);
@@ -171,8 +179,8 @@ export default function Onboard({account, onRefresh, sessionSignal}) {
         call={chainId:50383,to:COLLATERAL,data:encodeFunctionData({abi:erc20Abi,functionName:'approve',args:[BANK,amount]}),value:0n};
         orderEvidence={spender:BANK,approvalAmount:String(amount),previousAllowance:String(allowance)};
       } else {
-        if (!quote || quote.symbol!==symbol || quote.amount!==quantity || quote.pool.toLowerCase()!==market.poolAddress.toLowerCase() || quote.baseDecimals!==market.baseDecimals || quote.quoteDecimals!==market.quoteDecimals || Date.now()<quote.created || Date.now()-quote.created>30000) throw Error('Review a fresh quote before sending.');
-        const {price:p,quantity:q} = await orderInputs(provider,markets,market,quantity,BigInt(quote.price),BigInt(quote.allowance));
+        if (!quote || quote.symbol!==symbol || quote.amount!==quantity || quote.pool.toLowerCase()!==market.poolAddress.toLowerCase() || quote.baseDecimals!==market.baseDecimals || quote.quoteDecimals!==market.quoteDecimals || quoteSecondsRemaining(quote,Date.now())===0) throw Error('Review a fresh quote before sending.');
+        const p=BigInt(quote.price), q=exactUnits(quote.amount,market.baseDecimals);
         orderEvidence = {pool:market.poolAddress,baseline:'0',quantity:String(q),price:String(p),baseDecimals:market.baseDecimals,symbol};
         call = (await markets.trader.buildPlacePerpOrder({pool:market.poolAddress,isBid:true,price:p,quantity:q,orderType:2})).order;
       }
@@ -193,11 +201,13 @@ export default function Onboard({account, onRefresh, sessionSignal}) {
         if (await rpc.readContract({address:COLLATERAL,abi:erc20Abi,functionName:'allowance',args:[account,BANK]}) !== BigInt(orderEvidence.previousAllowance)) throw Error('Wallet permission changed. Review it before continuing.');
       }
       if (kind === 'order') {
-        if (!quote || Date.now()<quote.created || Date.now()-quote.created>30000) throw Error('Quote expired. Refresh it before sending.');
-        await orderInputs(provider,markets,market,quantity,BigInt(quote.price),BigInt(quote.allowance));
-        if (Date.now()-quote.created>30000) throw Error('Quote expired. Refresh it before sending.');
+        if (!quote || quoteSecondsRemaining(quote,Date.now())===0) throw Error('Quote expired. Refresh it before sending.');
+        const checked=await orderInputs(provider,markets,market,quantity,BigInt(quote.price),BigInt(quote.allowance));
+        if (checked.price!==BigInt(orderEvidence.price) || checked.quantity!==BigInt(orderEvidence.quantity)) throw Error('Order no longer matches the reviewed quote. Refresh it before sending.');
+        if (quoteSecondsRemaining(quote,Date.now())===0) throw Error('Quote expired. Refresh it before sending.');
       }
       await identity(provider,account); assertAttempt(generation,attempt);
+      if (kind === 'order' && quoteSecondsRemaining(quote,Date.now())===0) throw Error('Quote expired. Refresh it before sending.');
       intent = {kind,unknown:true,to:call.to,data:call.data,value:String(call.value || 0n),...orderEvidence};
       saveVerified(localStorage,key(account),intent);
       setPending(intent);
@@ -306,7 +316,7 @@ export default function Onboard({account, onRefresh, sessionSignal}) {
     <label>Amount ({symbol})<input disabled={!ORDER_ENABLED || busy || !!pending} value={quantity} onChange={e=>{edits.current[symbol]=e.target.value;setQuantity(e.target.value);setQuote(null);}} inputMode="decimal" /></label>
     {!grid ? <p role="status">Checking the market minimum and size step...</p> : grid.error ? <p role="status">Market size rules are unavailable. Reconnect and try again.</p> : <p>Market minimum: {grid.min} {symbol}; size step: {grid.lot} {symbol}.{grid.suggested===null && ' The minimum is above this tool’s size limit.'}</p>}
     <button disabled={!ORDER_ENABLED || busy || !!pending || !grid || grid.error || grid.suggested===null} onClick={previewOrder}>Review price</button>
-    {quote && <><p>Buy up to {quote.amount} {quote.symbol}, at no more than {formatUnits(BigInt(quote.price),quote.quoteDecimals)} USDso per {quote.symbol}. The quote expires after 30 seconds. Estimated wallet draw: {formatUnits(BigInt(quote.ownWalletPull),18)} USDso. Your current MarginBank allowance is {formatUnits(BigInt(quote.allowance),18)} USDso; the actual draw may change before execution, up to that allowance.</p><button disabled={!ORDER_ENABLED || busy || !!pending} onClick={()=>lockedSubmit('order')}>Open {quote.symbol} long</button></>}
+    {quote && <><p>Buy up to {quote.amount} {quote.symbol}, at no more than {formatUnits(BigInt(quote.price),quote.quoteDecimals)} USDso per {quote.symbol}. Quote {quoteSecondsRemaining(quote,quoteNow) > 0 ? `expires in ${quoteSecondsRemaining(quote,quoteNow)} seconds` : 'expired; refresh the price before continuing'}. Estimated wallet draw: {formatUnits(BigInt(quote.ownWalletPull),18)} USDso. Your current MarginBank allowance is {formatUnits(BigInt(quote.allowance),18)} USDso; the actual draw may change before execution, up to that allowance.</p><button disabled={!ORDER_ENABLED || busy || !!pending || quoteSecondsRemaining(quote,quoteNow)===0} onClick={()=>lockedSubmit('order')}>Open {quote.symbol} long</button></>}
     <details><summary>About paper test credit</summary><p>The current dreamDEX distributor rejects direct claims even when its SDK reports eligibility. No claim transaction is available here right now.</p></details>
     <p role="status">{message}</p>
   </section>;
