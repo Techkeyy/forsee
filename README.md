@@ -1,31 +1,60 @@
 # Forsee
 
-Forsee helps dreamDEX testnet traders inspect their account and explore how separate hypothetical BTC and ETH price moves would change mark PnL.
+[Open Forsee](https://forsee-dreamdex-testnet.onrender.com) · [Source repository](https://github.com/Techkeyy/forsee)
 
-This is an experimental Somnia testnet build. Native stop registration, cancellation and permission review are implemented, but have not yet been proven with a real Rabby transaction and triggered fill. Connect a browser wallet on Somnia Hideki2 to load its current margin account and active positions. Refresh to fetch a new snapshot. Other active markets are held at their current marks in the hypothetical calculation. The calculation is not future account health or a liquidation prediction; funding, fees, changing positions and maintenance requirements can change outcomes.
+Forsee helps dreamDEX testnet traders inspect their account and explore how simultaneous hypothetical BTC and ETH price moves could change mark PnL and the margin buffer.
+
+> “What might happen to my account if both markets move against me?”
+
+Forsee is an experimental Somnia Hideki2 testnet build. Its scenario is illustrative, not a liquidation forecast. Funding, fees, maintenance requirements, other positions and market movements can change the outcome.
+
+## What you can inspect
+
+1. **Connect** an injected browser wallet and verify the network using chain ID, network ID and genesis block hash.
+2. **Read** the connected account's margin health and active positions. Refresh obtains new snapshots; their block numbers can differ.
+3. **Explore** independent hypothetical BTC and ETH price moves. Other active markets remain at their current marks; maintenance and funding are held fixed. The estimate is withheld when the inputs are incomplete or stale.
+4. **Prepare a small trade** with a bounded USDso allowance and live BTC/ETH market size rules. The order UI is enabled for controlled testnet use; a real fill is still being verified.
+5. **Review** native protective stop terms and permissions for an existing position. The stop is conditional: registration alone is neither a fill nor proof of reduced exposure.
+
+## Current status and limits
+
+A disposable Rabby wallet was connected and network-verified on Hideki2. It held 100 USDso in the wallet, 50 STT, and zero perps margin before trading. Forsee submitted and verified a 20 USDso MarginBank approval; the independent on-chain receipt is [0x9ad81b...ff99fa1](https://explorer.testnet.somnia.network/tokyo/tx/0x9ad81b938164a796327e049aca8b3c56a1d3584ae5e5478d2578f3e47ff99fa1). The current local suite passes 49 tests and a production build. The Render static site is live, but a deployed browser-wallet trade and fill are not yet proven.
+
+The in-app paper-credit claim is disabled: the distributor reverted in a direct call even though the SDK reported eligibility. A bounded collateral approval was verified in the browser and on chain. The opening-order controls are enabled for controlled testnet testing; a real order receipt, fill and post-trade position are still pending. Native stop registration, cancellation and permission controls are implemented, but live wallet registration, trigger, fill, cancellation and revocation have not been verified. The [public app](https://forsee-dreamdex-testnet.onrender.com) is deployed; connected-wallet UAT on that URL and the demo video remain pending. Do not treat a transaction receipt or a pending stop as a filled order.
+
+The account and position snapshots may be from different blocks. Forsee withholds the illustrative estimate for incomplete or unpriceable positions, snapshots more than 100 blocks apart, or data older than its 30-second freshness heuristic. The heuristic does not guarantee freshness. The calculation is not an exact future account-health or liquidation prediction.
 
 ## Run locally
 
-Requires Node.js and network access to the public Somnia testnet RPC and dreamDEX indexer.
+Requires Node.js, an injected browser wallet, and network access to the public Hideki2 RPC and dreamDEX indexer. A connected account with positions is needed to explore position-dependent results. Testnet STT pays transaction gas; a stop also requires prepaid trigger gas. Never put a private key or recovery phrase in the app.
 
 ```sh
+git clone https://github.com/Techkeyy/forsee.git
+cd forsee
 npm ci
 npm run doctor
 npm run dev
 ```
 
-Open the local URL printed by Vite. `npm run build` creates the production bundle. The doctor is read-only and verifies network identity, market discovery and bank configuration. Its dated evidence is in [scripts/doctor-results.md](scripts/doctor-results.md).
+Open the local URL printed by Vite, connect the wallet and switch to Somnia Hideki2 if needed. The doctor is read-only; it checks network identity, market discovery and bank configuration. Run `npm test` for the local tests and `npm run build` for the production bundle. Network and market data can change; a passing doctor is not proof of order execution.
 
-## What is available
+## How it is built
 
-- Wallet address connection and network identity checks using chain ID, network ID and genesis block hash.
-- Native protective-stop review, registration and cancellation controls, transaction recovery, and operator-permission review. These write paths require browser-wallet approval and still need live end-to-end verification; a registration receipt does not prove a fill.
-- On-chain account health and active-position analytics, with separate snapshot block numbers and an explicit refresh.
-- An illustrative BTC/ETH mark PnL change and buffer, holding maintenance and funding fixed. The estimate is withheld if any active position cannot be priced or identified, if snapshots differ by more than 100 blocks, or when source-block age plus elapsed read time exceeds 30 seconds. This cutoff is a freshness heuristic, not a guarantee.
+| Module | Job |
+| --- | --- |
+| `src/account.js` | Reads positions, account health and scenario inputs. |
+| `src/Onboard.jsx` | Reads wallet USDso and allowance, prepares bounded approval/revocation and a small opening order; direct voucher claiming is disabled. |
+| `src/StopReview.jsx` | Presents protective-stop review and controls. |
+| `src/stop-read.js` | Reads stop registry and status information. |
+| `src/stop-write.js` | Prepares native stop transaction operations. |
+| `src/PermissionReview.jsx` | Presents operator-permission review and controls. |
+| `scripts/doctor.mjs` | Checks the configured network and market integration. |
 
-## Limits and open gates
+The app uses React, Vite, viem and `@somnia-chain/markets-sdk` 0.32.1. See the [dreamDEX testnet developer guide](https://app.testnet.dreamdex.io/docs/developers/perps-testnet) for the protocol and network details.
 
-The app can submit native stop and cancel transactions, but live wallet and outcome tests are pending. It cannot settle a market order itself. A native immediate reduce-only order has not been verified. A successful receipt and actual fill must be demonstrated before reporting a reduction. Scenario results do not adjust maintenance, funding, fees or other positions. Account and position reads are independently pinned and can sample different blocks. Browser-wallet end-to-end testing, deployment, real order/fill evidence and final user acceptance remain outstanding. The testnet developer guide is [here](https://app.testnet.dreamdex.io/docs/developers/perps-testnet).
+## X posts
+
+The required 2 or 3 posts tagging @DreamDEXSomnia have not yet been published. Their real links will be added here after publication.
 
 
 
