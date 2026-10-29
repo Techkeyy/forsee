@@ -3,10 +3,11 @@ import { hidekiTestnet } from '@somnia-chain/markets-sdk/chains';
 import { createPublicClient, createWalletClient, custom, http, parseAbi, parseAbiItem, encodeFunctionData, decodeEventLog, decodeFunctionData } from 'viem';
 import { readAccount, isFresh } from './account.js';
 import { reviewStopTerms, matchesDiscoveredMarket } from './stop.js';
-import { createWalletGuard, classifyWalletError, receiptStopId, loadAttempt } from './stop-attempt.js';
+import { createWalletGuard, classifyWalletError, receiptStopId } from './stop-attempt.js';
 import { readAction, saveAction, clearAction, matchesTransaction } from './action-journal.js';
 import {sendTracked} from './tracked-send.js';
 import {withAccountLock} from './wallet-lock.js';
+import {assertNoUnresolved} from './unresolved-journals.js';
 import {backupHash,readBackupHash,clearBackupHash} from './hash-backup.js';
 import {saveStopHistory,hasLiveSavedStop} from './stop-history.js';
 const genesis='0x555de6145260a388241bea0f9328d57335d330d5a0fbb329de1a4fd1c7f2eb25';
@@ -36,7 +37,7 @@ async function send(provider,account,ex,publicClient,watch,r,call,revalidate,sig
   return reconcileActionInternal(provider,account,r,ex,publicClient,watch);
 }
 export async function performAction({provider,account,kind,row,input,id,signal}){return locked(account,async()=>{
-  if(readAction(localStorage,account)||loadAttempt(localStorage,account))throw new Error('Resolve the previous attempt before another action');
+  assertNoUnresolved(localStorage,account);
   const ex=exchange(provider,account),pub=client(),watch=createWalletGuard(provider);
   try{await wallet(provider,account);if((await pub.getCode({address:account}))?.replace(/^0x/,'') )throw new Error('Only externally owned wallets are supported');const m=await market(ex,row);const registry=m.stopRegistry;let call,terms=null;
     const binding=kind==='cancel'?null:await ex.client.getOperatorPermissionsRegistry(row.pool);if(kind!=='cancel'&&!binding)throw new Error('Permission registry unavailable');
